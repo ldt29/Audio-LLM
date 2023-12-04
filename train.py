@@ -15,7 +15,7 @@ from tqdm import tqdm, trange
 
 from model import ALLM
 from optimizer import AdamW, get_linear_schedule_with_warmup
-from data_utils import processors, output_modes,  compute_metrics, load_and_cache_text_examples, load_and_cache_audio_examples  
+from data_utils import processors, output_modes,  compute_metrics, load_and_cache_audio_examples  
 
 from typing import Dict, List, Tuple
 
@@ -29,25 +29,20 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
-def train(args, train_dataset, mlm_train_dataset, model, tokenizer):
+def train(args, train_dataset, model):
     """ Train the model """
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
-    text_train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
-    text_train_dataloader = DataLoader(train_dataset, sampler=text_train_sampler, batch_size=args.train_batch_size)
-
-    def collate(examples: List[torch.Tensor]):
-        pass
-
-    audio_train_sampler = RandomSampler(mlm_train_dataset) if args.local_rank == -1 else DistributedSampler(mlm_train_dataset)
+    
+    audio_train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
     audio_train_dataloader = DataLoader(
-        mlm_train_dataset, sampler=audio_train_sampler, batch_size=args.train_batch_size, collate_fn=collate
+        train_dataset, sampler=audio_train_sampler, batch_size=args.train_batch_size
     )
 
     if args.max_steps > 0:
         t_total = args.max_steps
-        args.num_train_epochs = args.max_steps // (len(text_train_dataloader) // args.gradient_accumulation_steps) + 1
+        args.num_train_epochs = args.max_steps // (len(audio_train_dataloader) // args.gradient_accumulation_steps) + 1
     else:
-        t_total = len(text_train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
+        t_total = len(audio_train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
 
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -63,10 +58,9 @@ def train(args, train_dataset, mlm_train_dataset, model, tokenizer):
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total
     ) 
-
     # Check if saved optimizer or scheduler states exist
-    if os.path.isfile(os.path.join(args.model_name_or_path, "optimizer.pt")) and os.path.isfile(
-        os.path.join(args.model_name_or_path, "scheduler.pt")
+    if os.path.isfile(os.path.join(args.output_dir, "optimizer.pt")) and os.path.isfile(
+        os.path.join(args.output_dir, "scheduler.pt")
     ):
         # Load in optimizer and scheduler states
         optimizer.load_state_dict(torch.load(os.path.join(args.model_name_or_path, "optimizer.pt")))
@@ -98,14 +92,14 @@ def train(args, train_dataset, mlm_train_dataset, model, tokenizer):
     epochs_trained = 0
     steps_trained_in_current_epoch = 0
     # Check if continuing training from a checkpoint
-    if os.path.exists(args.model_name_or_path):
+    if os.path.exists(args.output_dir):
         # set global_step to global_step of last saved checkpoint from model path
         try:
-            global_step = int(args.model_name_or_path.split("-")[-1].split("/")[0])
+            global_step = int(args.output_dir.split("-")[-1].split("/")[0])
         except ValueError:
             global_step = 0
-        epochs_trained = global_step // (len(text_train_dataloader) // args.gradient_accumulation_steps)
-        steps_trained_in_current_epoch = global_step % (len(text_train_dataloader) // args.gradient_accumulation_steps)
+        epochs_trained = global_step // (len(audio_train_dataloader) // args.gradient_accumulation_steps)
+        steps_trained_in_current_epoch = global_step % (len(audio_train_dataloader) // args.gradient_accumulation_steps)
 
         logger.info("  Continuing training from checkpoint, will skip to saved global_step")
         logger.info("  Continuing training from epoch %d", epochs_trained)
@@ -122,13 +116,12 @@ def train(args, train_dataset, mlm_train_dataset, model, tokenizer):
     best_dev_acc=0
     saved_model=False
     for _ in train_iterator:
-        text_epoch_iterator = tqdm(text_train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         audio_epoch_iterator = tqdm(audio_train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         #########################################  Your Code  ###########################################
         # todo
-        # get batch_mlm and batch by iterating the text_poch_iterator and audio_epoch_iterator
-        iterator = zip(text_epoch_iterator, audio_epoch_iterator)
-        for step, (batch_text, batch_audio) in enumerate(iterator):
+        # get batch and batch by iterating the text_poch_iterator and audio_epoch_iterator
+        iterator =  audio_epoch_iterator
+        for step, batch in enumerate(iterator):
         
         #################################################################################################
 
@@ -137,16 +130,12 @@ def train(args, train_dataset, mlm_train_dataset, model, tokenizer):
                 continue
 
             model.train()
-            batch = tuple(t.to(args.device) for t in batch)
-
-            #########################################  Your Code  ###########################################
-            # todo
-            # prepare the mlm_inputs, mlm_attention_mask, mlm_labels, using batch_mlm as input, with the help of function "mask_tokens" in "mlm_utils.py"
-            #################################################################################################
-            
-            outputs = model()
-            
-            loss = outputs[0] + args.mlm_alpha * outputs[1] # model outputs are always tuple in transformers (see doc)
+            ###################################################################################
+            inputs = batch[0]
+            labels = batch[1]
+            outputs = model(inputs,"please convert this audio to text.", labels,device=args.device)
+            # compute word error rate
+            loss = outputs.loss
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -157,8 +146,8 @@ def train(args, train_dataset, mlm_train_dataset, model, tokenizer):
             tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0 or (
                 # last step in epoch but step is always smaller than gradient_accumulation_steps
-                len(text_epoch_iterator) <= args.gradient_accumulation_steps
-                and (step + 1) == len(text_epoch_iterator)
+                len(iterator) <= args.gradient_accumulation_steps
+                and (step + 1) == len(iterator)
             ):
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
@@ -171,15 +160,15 @@ def train(args, train_dataset, mlm_train_dataset, model, tokenizer):
                     if (
                         args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
-                        dev_acc = evaluate(args, model, tokenizer, data_type="dev")['acc']
+                        dev_acc = evaluate(args, model, data_type="dev")['acc']
                         if dev_acc > best_dev_acc:
                             best_dev_acc = dev_acc
-                            save_model(model, tokenizer, optimizer, scheduler, args, args.output_dir)
+                            save_model(model, optimizer, scheduler, args, args.output_dir)
                             saved_model=True
                         print('loss this epoch',tr_loss-prev_tr_loss)
                         prev_tr_loss=tr_loss
             if args.max_steps > 0 and global_step > args.max_steps:
-                text_epoch_iterator.close()
+                iterator.close()
                 break
         
         
@@ -188,11 +177,11 @@ def train(args, train_dataset, mlm_train_dataset, model, tokenizer):
             break
     logger.info(" best valid acc = {}".format(best_dev_acc))
     if saved_model==False:
-        save_model(model, tokenizer, optimizer, scheduler, args, args.output_dir)
+        save_model(model, optimizer, scheduler, args, args.output_dir)
     return global_step, tr_loss / global_step
 
 
-def save_model(model,tokenizer,optimizer,scheduler,args,output_dir):               
+def save_model(model,optimizer,scheduler,args,output_dir):               
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -213,56 +202,54 @@ def save_model(model,tokenizer,optimizer,scheduler,args,output_dir):
     print(f"save the model to {filepath}")
 
 def evaluate(args, model, tokenizer, data_type="dev"):
-    eval_task_names=(args.task_name,)
-    eval_outputs_dirs=(args.output_dir,)
+    eval_output_dir=args.output_dir
     results = {}
-    for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, data_type=data_type)
+    eval_dataset = load_and_cache_audio_examples(args, data_type=data_type)
 
-        if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
-            os.makedirs(eval_output_dir)
+    if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
+        os.makedirs(eval_output_dir)
 
-        args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
-        # Note that DistributedSampler samples randomly
-        eval_sampler = SequentialSampler(eval_dataset)
-        eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.eval_batch_size)
+    args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
+    # Note that DistributedSampler samples randomly
+    eval_sampler = SequentialSampler(eval_dataset)
+    eval_dataloader = DataLoader(eval_dataset, sampler=eval_sampler, batch_size=args.eval_batch_size)
 
-        # multi-gpu eval
-        if args.n_gpu > 1 and not isinstance(model, torch.nn.DataParallel):
-            model = torch.nn.DataParallel(model)
+    # multi-gpu eval
+    if args.n_gpu > 1 and not isinstance(model, torch.nn.DataParallel):
+        model = torch.nn.DataParallel(model)
 
-        # Eval!
-        logger.info("***** Running evaluation {} *****".format(data_type))
-        logger.info("  Num examples = %d", len(eval_dataset))
-        logger.info("  Batch size = %d", args.eval_batch_size)
-        eval_loss = 0.0
-        nb_eval_steps = 0
-        preds = None
-        out_label_ids = None
-        for batch in tqdm(eval_dataloader, desc="Evaluating"):
-            model.eval()
-            batch = tuple(t.to(args.device) for t in batch)
+    # Eval!
+    logger.info("***** Running evaluation {} *****".format(data_type))
+    logger.info("  Num examples = %d", len(eval_dataset))
+    logger.info("  Batch size = %d", args.eval_batch_size)
+    eval_loss = 0.0
+    nb_eval_steps = 0
+    preds = None
+    out_label_ids = None
+    for batch in tqdm(eval_dataloader, desc="Evaluating"):
+        model.eval()
+        inputs = batch[0]
+        labels = batch[1]
+        labels = tokenizer(labels)
 
-            with torch.no_grad():
-                inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
-                outputs = model(**inputs)
-                tmp_eval_loss, logits = outputs[:2]
+        with torch.no_grad():
+            outputs = model(inputs,"please convert this audio to text.", labels,device=args.device)
+            tmp_eval_loss, logits = outputs[:2]
 
-                eval_loss += tmp_eval_loss.mean().item()
-            nb_eval_steps += 1
-            if preds is None:
-                preds = logits.detach().cpu().numpy()
-                out_label_ids = inputs["labels"].detach().cpu().numpy()
-            else:
-                preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-                out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            eval_loss += tmp_eval_loss.mean().item()
+        nb_eval_steps += 1
+        if preds is None:
+            preds = logits.detach().cpu().numpy()
+            out_label_ids = labels.detach().cpu().numpy()
+        else:
+            preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+            out_label_ids = np.append(out_label_ids, labels.detach().cpu().numpy(), axis=0)
 
         eval_loss = eval_loss / nb_eval_steps
-        if args.output_mode == "classification":
-            preds = np.argmax(preds, axis=1)
-        elif args.output_mode == "regression":
-            preds = np.squeeze(preds)
-        result = compute_metrics(eval_task, preds, out_label_ids)
+
+        preds = np.argmax(preds, axis=1)   
+
+        result = compute_metrics(preds, out_label_ids)
         results.update(result)
 
         if not os.path.exists(os.path.join(eval_output_dir, data_type)):
@@ -330,7 +317,7 @@ def main():
 
     # Required parameters
     parser.add_argument(
-        "--data_dir",
+        "--train_data_dir",
         default=None,
         type=str,
         required=True,
@@ -373,6 +360,18 @@ def main():
         help="Path to pre-trained model or shortcut name selected in the list:",
     )
     parser.add_argument(
+        "--dev_data_dir",
+        default="data-asr/LibriSpeech/dev-clean",
+        type=str,
+        help="The valid input data dir. Should contain the .wav files (or other data files) for the task.",
+    )
+    parser.add_argument(
+        "--test_data_dir",
+        default="data-asr/LibriSpeech/test-clean",
+        type=str,
+        help="The test input data dir. Should contain the .wav files (or other data files) for the task.",
+    )
+    parser.add_argument(
         "--config_name", default="", type=str, help="Pretrained config name or path if not the same as model_name",
     )
     parser.add_argument(
@@ -404,10 +403,10 @@ def main():
     )
 
     parser.add_argument(
-        "--per_gpu_train_batch_size", default=8, type=int, help="Batch size per GPU/CPU for training.",
+        "--per_gpu_train_batch_size", default=1, type=int, help="Batch size per GPU/CPU for training.",
     )
     parser.add_argument(
-        "--per_gpu_eval_batch_size", default=8, type=int, help="Batch size per GPU/CPU for evaluation.",
+        "--per_gpu_eval_batch_size", default=1, type=int, help="Batch size per GPU/CPU for evaluation.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -440,24 +439,6 @@ def main():
     )
     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
-
-    parser.add_argument("--train_data_file", default=None, type=str, help="The input training data file (a text file).")
-    parser.add_argument(
-        "--line_by_line",
-        action="store_true",
-        help="Whether distinct lines of text in the dataset are to be handled as distinct sequences.",
-    )
-    parser.add_argument("--mlm_probability", type=float, default=0.15, help="Ratio of tokens to mask for masked language modeling loss")
-    parser.add_argument("--mlm_alpha", type=float, default=1.0, help="Ratio to balance cls loss and mlm loss")
-
-    parser.add_argument(
-        "--block_size",
-        default=256,
-        type=int,
-        help="Optional input sequence length after tokenization."
-        "The training dataset will be truncated in block of this size for training."
-        "Default to the model max input length for single sentence inputs (take into account special tokens).",
-    )
 
     args = parser.parse_args()
 
@@ -509,9 +490,8 @@ def main():
 
     # Training
     if args.do_train:
-        text_train_dataset = load_and_cache_text_examples(args, data_type='train')
-        audio_train_dataset = load_and_cache_audio_examples(args, evaluate=False)
-        global_step, tr_loss = train(args, text_train_dataset, audio_train_dataset, model)
+        audio_train_dataset = load_and_cache_audio_examples(args, data_type='train')
+        global_step, tr_loss = train(args, audio_train_dataset, model)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
         # result = evaluate(args, model, tokenizer, prefix="")
 

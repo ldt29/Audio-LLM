@@ -10,74 +10,76 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
+from tqdm import tqdm, trange
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 
 logger = logging.getLogger(__name__)
 
-class TextDataset(Dataset):
-    def __init__(self, args, file_path: str, block_size=512):
 
-        assert os.path.isfile(file_path)
+class AudioProcessor(Dataset):
+    # Audio Speech Recognition Processor
+    # get audio file name and text
+    # example:
+    # data_dir/61/70970/61-70970.trans.txt
+    # 61-70970-0005 THE LAD HAD CHECKED HIM THEN
+    # 
+    # audio file name: 61-70970-0005.flac
+    # audio file path: data_dir/61/70970/61-70970-0005.flac
+    # text: THE LAD HAD CHECKED HIM THEN
+    def __init__(self, data_dir):
+        self.text_path_list = glob.glob(os.path.join(data_dir, '*', '*', '*.txt'))
+        self.text_list = []
+        self.audio_path_list = []
+        for text_path in self.text_path_list:
+            with open(text_path, 'r') as f:
+                audio_path_pre = text_path.rsplit('/', 1)[0]
+                for line in f.readlines():
+                    line = line.strip()
+                    if line != '':
+                        self.text_list.append(line.split(' ', 1)[-1])
+                        audio_path = audio_path_pre + '/' + line.split(' ', 1)[0] + '.flac'
+                        self.audio_path_list.append(audio_path)
 
-        # block_size = block_size - (tokenizer.max_len - tokenizer.max_len_single_sentence) #jing
-
-        directory, filename = os.path.split(file_path)
-        cached_features_file = os.path.join(
-            directory, args.model_type + "_cached_lm_" + str(block_size) + "_" + filename
-        )
-
-        if os.path.exists(cached_features_file) and not args.overwrite_cache:
-            logger.info("Loading features from cached file %s", cached_features_file)
-            with open(cached_features_file, "rb") as handle:
-                self.examples = pickle.load(handle)
-        else:
-            logger.info("Creating features from dataset file at %s", directory)
-
-            self.examples = []
-            with open(file_path, encoding="utf-8") as f:
-                text = f.read()
-
-            tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
-
-            for i in range(0, len(tokenized_text) - block_size + 1, block_size):  # Truncate in block of block_size
-                self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text[i : i + block_size]))
-            # Note that we are loosing the last truncated example here for the sake of simplicity (no padding)
-            # If your dataset is small, first you should loook for a bigger one :-) and second you
-            # can change this behavior by adding (model specific) padding.
-
-            logger.info("Saving features into cached file %s", cached_features_file)
-            with open(cached_features_file, "wb") as handle:
-                pickle.dump(self.examples, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    def __len__(self):
-        return len(self.examples)
-
-    def __getitem__(self, item):
-        return torch.tensor(self.examples[item], dtype=torch.long)
-
-def compute_metrics(task_name, preds, labels):
-    assert len(preds) == len(labels)
     
-def load_and_cache_text_examples(args,evaluate=False):
-    pass
+        
+    def __len__(self):
+        return len(self.audio_path_list)
+    
+    def __getitem__(self, idx):
+        return self.audio_path_list[idx], self.text_list[idx]
 
 
-def load_and_cache_audio_examples(args,evaluate=False):
-    pass
+def compute_metrics(preds, labels):
+    assert len(preds) == len(labels)
+    return 
+    
 
 
-class DataProcessor(object):
-    pass
-class WavProcessor(DataProcessor):
-    pass
+def load_and_cache_audio_examples(args,data_type,evaluate=False):
+    if data_type=='train':
+        processor = processors["wave2text"](args.train_data_dir)
+    elif data_type=='dev':
+        processor = processors["wave2text"](args.dev_data_dir)
+    else:
+        processor = processors["wave2text"](args.test_data_dir)
+
+    return processor
+
 
 processors = {
-    "wave2text": WavProcessor,
+    "wave2text": AudioProcessor,
 }
 
 output_modes = {
     "wave2text": "text"
 }
-
-
+# test train_dataset
+# train_dataset = AudioProcessor("data-asr/LibriSpeech/test-clean")
+# audio_train_dataloader = DataLoader(
+#     train_dataset, batch_size=8
+# )
+# audio_epoch_iterator = tqdm(audio_train_dataloader, desc="Iteration")
+# for step, batch in enumerate(audio_epoch_iterator):
+#     print(batch[0])

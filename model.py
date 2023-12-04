@@ -9,6 +9,7 @@ from transformers import (
     LlamaForCausalLM,
     LlamaTokenizer
 )
+import numpy as np
 import librosa
 from beats.BEATs import BEATsConfig, BEATs
 from qformer.Qformer import BertConfig, BertLMHeadModel
@@ -102,34 +103,34 @@ class ALLM(nn.Module):
 
     def forward(
         self,
-        wav_path,
+        inputs,
         prompt,
+        labels,
         prompt_pattern="USER: <Speech><SpeechHere></Speech> {}\nASSISTANT:",
         device='cuda:0',
-        max_length=200,
-        num_beams=4,
-        do_sample=True,
-        min_length=1,
-        top_p=0.9,
-        repetition_penalty=1.0,
-        length_penalty=1.0,
-        temperature=1.0,
     ):
         # read wav
-        wav, sr = sf.read(wav_path)
-        if len(wav.shape) == 2:
-            wav = wav[:, 0]
-        if len(wav) > 30 * sr:
-            wav = wav[: 30 * sr]
-        if sr != 16000:
-            wav = librosa.resample(wav, orig_sr=sr, target_sr=16000, res_type="fft")
+        wav_np = np.zeros((len(inputs), 30*16000))
+        i = 0
+        for wav_path in inputs:
+            wav, sr = sf.read(wav_path)
+            if len(wav.shape) == 2:
+                wav = wav[:, 0]
+            if len(wav) > 30 * sr:
+                wav = wav[: 30 * sr]
+            if len(wav) < 30 * sr:
+                wav = np.concatenate((wav, np.zeros(30 * 16000 - len(wav))))
+            if sr != 16000:
+                wav = librosa.resample(wav, orig_sr=sr, target_sr=16000, res_type="fft")
+            wav_np[i] = wav
+            i += 1
         
         # whisper
-        spectrogram = self.feature_extractor(wav, return_tensors="pt", sampling_rate=16000).input_features.to(device) # [1, 80, 3000]
+        spectrogram = self.feature_extractor(wav_np, return_tensors="pt", sampling_rate=16000).input_features.to(device) # [1, 80, 3000]
         speech_embeds = self.speech_encoder(spectrogram, return_dict=True).last_hidden_state
        
         # beats
-        raw_wav = torch.from_numpy(wav).to(device).unsqueeze(0)
+        raw_wav = torch.from_numpy(wav_np).to(device).unsqueeze(0)
         audio_padding_mask = torch.zeros(raw_wav.shape, device=device).bool()
         audio_embeds, _ = self.beats.extract_features(raw_wav, padding_mask=audio_padding_mask, feature_only=True)
 
@@ -197,27 +198,19 @@ class ALLM(nn.Module):
 
         embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds], dim=1)
         atts = torch.ones(embeds.size()[:-1], dtype=torch.long).to(embeds.device)
+        labels_ids = prompt_right_ids = self.llama_tokenizer(
+            labels,
+            return_tensors="pt",
+            add_special_tokens=False
+        ).to(speech_embeds.device).input_ids
 
-        # generate
-        output = self.llama_model.generate(
-            inputs_embeds=embeds,
-            max_length=max_length,
-            num_beams=num_beams,
-            do_sample=do_sample,
-            min_length=min_length,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-            length_penalty=length_penalty,
-            temperature=temperature,
-            attention_mask=atts,
-            bos_token_id=self.llama_tokenizer.bos_token_id,
-            eos_token_id=self.llama_tokenizer.eos_token_id,
-            pad_token_id=self.llama_tokenizer.pad_token_id
-        )
+        # predict
         
-        output_text = self.llama_tokenizer.batch_decode(output, add_special_tokens=False, skip_special_tokens=True)
 
-        return output_text
+        return self.llama_model(
+            inputs_embeds=embeds,
+            labels = labels_ids,
+        )
         
         
     def generate(
