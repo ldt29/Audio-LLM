@@ -1,5 +1,3 @@
-# use torch paraller train large language model
-
 import argparse
 import glob
 import json
@@ -135,7 +133,7 @@ def train(args, train_dataset, model):
             labels = batch[1]
             outputs = model(inputs,"please convert this audio to text.", labels,device=args.device)
             # compute word error rate
-            loss = outputs.loss
+            loss = outputs[0]
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -201,7 +199,7 @@ def save_model(model,optimizer,scheduler,args,output_dir):
     torch.save(save_info, filepath)
     print(f"save the model to {filepath}")
 
-def evaluate(args, model, tokenizer, data_type="dev"):
+def evaluate(args, model, data_type="test"):
     eval_output_dir=args.output_dir
     results = {}
     eval_dataset = load_and_cache_audio_examples(args, data_type=data_type)
@@ -230,20 +228,19 @@ def evaluate(args, model, tokenizer, data_type="dev"):
         model.eval()
         inputs = batch[0]
         labels = batch[1]
-        labels = tokenizer(labels)
 
         with torch.no_grad():
             outputs = model(inputs,"please convert this audio to text.", labels,device=args.device)
-            tmp_eval_loss, logits = outputs[:2]
+            tmp_eval_loss, logits, labels_ids = outputs[:3]
 
             eval_loss += tmp_eval_loss.mean().item()
         nb_eval_steps += 1
         if preds is None:
             preds = logits.detach().cpu().numpy()
-            out_label_ids = labels.detach().cpu().numpy()
+            out_label_ids = labels_ids.detach().cpu().numpy()
         else:
             preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(out_label_ids, labels.detach().cpu().numpy(), axis=0)
+            out_label_ids = np.append(out_label_ids, labels_ids.detach().cpu().numpy(), axis=0)
 
         eval_loss = eval_loss / nb_eval_steps
 
@@ -263,53 +260,6 @@ def evaluate(args, model, tokenizer, data_type="dev"):
 
     return results
 
-
-def load_and_cache_examples(args, task, tokenizer, data_type='dev'):
-    if args.local_rank not in [-1, 0] and data_type=='train':
-        torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
-
-    processor = processors[task]()
-    output_mode = output_modes[task]
-    # Load data features from cache or dataset file
-    cached_features_file = os.path.join(
-        args.data_dir,
-        "cached_{}_{}_{}_{}".format(
-            data_type,
-            list(filter(None, args.model_name_or_path.split("/"))).pop(),
-            str(args.max_seq_length),
-            str(task),
-        ),
-    )
-    if os.path.exists(cached_features_file) and not args.overwrite_cache:
-        logger.info("Loading features from cached file %s", cached_features_file)
-        features = torch.load(cached_features_file)
-    else:
-        logger.info("Creating features from dataset file at %s", args.data_dir)
-        label_list = processor.get_labels()
-        if data_type=='train':
-            examples=processor.get_train_examples(args.data_dir)[:50]
-        elif data_type=='dev':
-            examples=processor.get_dev_examples(args.data_dir)
-        else:
-            examples=processor.get_test_examples(args.data_dir)
-        if args.local_rank in [-1, 0]:
-            logger.info("Saving features into cached file %s", cached_features_file)
-            torch.save(features, cached_features_file)
-
-    if args.local_rank == 0 and data_type=='train':
-        torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
-
-    # Convert to Tensors and build dataset
-    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
-    all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
-    all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
-    if output_mode == "classification":
-        all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
-    elif output_mode == "regression":
-        all_labels = torch.tensor([f.label for f in features], dtype=torch.float)
-
-    dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
-    return dataset
 
 
 def main():

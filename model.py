@@ -202,20 +202,22 @@ class ALLM(nn.Module):
         # print(prompt_right_embeds.shape) torch.Size([8, 16, 4096])
         embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds], dim=1)
         atts = torch.ones(embeds.size()[:-1], dtype=torch.long).to(embeds.device)
-        labels_ids = prompt_right_ids = self.llama_tokenizer(
+        labels_ids = self.llama_tokenizer(
             labels,
             return_tensors="pt",
-            add_special_tokens=False
-        ).to(speech_embeds.device).input_ids
+            add_special_tokens=False,
+            padding = True
+        ).to(embeds.device).input_ids
 
         # predict
-        
-
-        return self.llama_model(
+        # print(embeds.shape)  torch.Size([8, 112, 4096])
+        # print(labels_ids.shape) torch.Size([8, 125])
+        outputs = self.llama_model(
             inputs_embeds=embeds,
             labels = labels_ids,
+            attention_mask=atts,
         )
-        
+        return outputs.loss, outputs.logits, labels_ids
         
     def generate(
         self,
