@@ -53,7 +53,9 @@ class AudioProcessor(Dataset):
 
 def compute_metrics(preds, labels):
     assert len(preds) == len(labels)
-    return 
+    # return average word error rate
+    return {"acc": (preds == labels).mean()}
+
     
 
 

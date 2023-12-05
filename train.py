@@ -244,7 +244,7 @@ def evaluate(args, model, data_type="test"):
 
         eval_loss = eval_loss / nb_eval_steps
 
-        preds = np.argmax(preds, axis=1)   
+        preds = np.argmax(preds, axis=2)   
 
         result = compute_metrics(preds, out_label_ids)
         results.update(result)
@@ -325,12 +325,6 @@ def main():
         "--config_name", default="", type=str, help="Pretrained config name or path if not the same as model_name",
     )
     parser.add_argument(
-        "--tokenizer_name",
-        default="",
-        type=str,
-        help="Pretrained tokenizer name or path if not the same as model_name",
-    )
-    parser.add_argument(
         "--cache_dir",
         default="",
         type=str,
@@ -353,10 +347,10 @@ def main():
     )
 
     parser.add_argument(
-        "--per_gpu_train_batch_size", default=1, type=int, help="Batch size per GPU/CPU for training.",
+        "--per_gpu_train_batch_size", default=8, type=int, help="Batch size per GPU/CPU for training.",
     )
     parser.add_argument(
-        "--per_gpu_eval_batch_size", default=1, type=int, help="Batch size per GPU/CPU for evaluation.",
+        "--per_gpu_eval_batch_size", default=8, type=int, help="Batch size per GPU/CPU for evaluation.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",

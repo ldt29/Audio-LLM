@@ -79,7 +79,7 @@ class ALLM(nn.Module):
             target_modules = None
             self.peft_config = LoraConfig(
                 task_type=TaskType.CAUSAL_LM, 
-                inference_mode=True, 
+                inference_mode=False, 
                 r=lora_rank, 
                 lora_alpha=lora_alpha, 
                 lora_dropout=lora_dropout,
@@ -100,6 +100,9 @@ class ALLM(nn.Module):
         if args.ckpt_path is not None:
             ckpt_dict = torch.load(args.ckpt_path)['model']
             self.load_state_dict(ckpt_dict, strict=False)
+
+        self.loss_fc = nn.CrossEntropyLoss(ignore_index=self.llama_tokenizer.pad_token_id)
+        self.softmax = nn.Softmax(dim=-1)
 
     def forward(
         self,
@@ -200,24 +203,31 @@ class ALLM(nn.Module):
         # print(prompt_left_embeds.shape) torch.Size([8, 7, 4096])
         # print(speech_embeds.shape) torch.Size([8, 88, 4096])
         # print(prompt_right_embeds.shape) torch.Size([8, 16, 4096])
-        embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds], dim=1)
-        atts = torch.ones(embeds.size()[:-1], dtype=torch.long).to(embeds.device)
         labels_ids = self.llama_tokenizer(
             labels,
             return_tensors="pt",
             add_special_tokens=False,
             padding = True
-        ).to(embeds.device).input_ids
+        ).to(device).input_ids
+        labels_embeds = embed_tokens(labels_ids)
+        embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds, labels_embeds], dim=1)
+        atts = torch.ones(embeds.size()[:-1], dtype=torch.long).to(device)
+        embeds = embeds.to(torch.float16)
 
         # predict
         # print(embeds.shape)  torch.Size([8, 112, 4096])
         # print(labels_ids.shape) torch.Size([8, 125])
         outputs = self.llama_model(
             inputs_embeds=embeds,
-            labels = labels_ids,
             attention_mask=atts,
         )
-        return outputs.loss, outputs.logits, labels_ids
+        logits = outputs.logits[:,-labels_ids.size(1)-1:-1,:]
+        
+        logits = logits.transpose(1, 2)
+        loss = self.loss_fc(self.softmax(logits), labels_ids)
+
+
+        return loss,logits,labels_ids
         
     def generate(
         self,
