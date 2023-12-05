@@ -111,7 +111,7 @@ class ALLM(nn.Module):
     ):
         # read wav
         wav_np = np.zeros((len(inputs), 30*16000))
-        i = 0
+        batch_size = 0
         for wav_path in inputs:
             wav, sr = sf.read(wav_path)
             if len(wav.shape) == 2:
@@ -122,15 +122,15 @@ class ALLM(nn.Module):
                 wav = np.concatenate((wav, np.zeros(30 * 16000 - len(wav))))
             if sr != 16000:
                 wav = librosa.resample(wav, orig_sr=sr, target_sr=16000, res_type="fft")
-            wav_np[i] = wav
-            i += 1
+            wav_np[batch_size] = wav
+            batch_size += 1
         
         # whisper
         spectrogram = self.feature_extractor(wav_np, return_tensors="pt", sampling_rate=16000).input_features.to(device) # [1, 80, 3000]
         speech_embeds = self.speech_encoder(spectrogram, return_dict=True).last_hidden_state
        
         # beats
-        raw_wav = torch.from_numpy(wav_np).to(device).unsqueeze(0)
+        raw_wav = torch.from_numpy(wav_np).to(device)
         audio_padding_mask = torch.zeros(raw_wav.shape, device=device).bool()
         audio_embeds, _ = self.beats.extract_features(raw_wav, padding_mask=audio_padding_mask, feature_only=True)
 
@@ -175,27 +175,31 @@ class ALLM(nn.Module):
             add_special_tokens=False
         ).to(speech_embeds.device).input_ids
         prompt_left_embeds = embed_tokens(prompt_left_ids)
+        prompt_left_embeds = prompt_left_embeds.repeat(batch_size,1,1)
         prompt_right_ids = self.llama_tokenizer(
             prompts_right,
             return_tensors="pt",
             add_special_tokens=False
         ).to(speech_embeds.device).input_ids
         prompt_right_embeds = embed_tokens(prompt_right_ids)
-
+        prompt_right_embeds = prompt_right_embeds.repeat(batch_size,1,1)
         bos_embeds = self.llama_model.model.embed_tokens(
             torch.ones(
-                [1, 1],
+                [batch_size, 1],
                 dtype=torch.long,
                 device=device,
             ) * self.llama_tokenizer.bos_token_id
         ) if not self.lora else self.llama_model.model.model.embed_tokens(
             torch.ones(
-                [1, 1],
+                [batch_size, 1],
                 dtype=torch.long,
                 device=device,
             ) * self.llama_tokenizer.bos_token_id
         )
-
+        # print(bos_embeds.shape) torch.Size([8, 1, 4096]) 
+        # print(prompt_left_embeds.shape) torch.Size([8, 7, 4096])
+        # print(speech_embeds.shape) torch.Size([8, 88, 4096])
+        # print(prompt_right_embeds.shape) torch.Size([8, 16, 4096])
         embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds], dim=1)
         atts = torch.ones(embeds.size()[:-1], dtype=torch.long).to(embeds.device)
         labels_ids = prompt_right_ids = self.llama_tokenizer(
