@@ -38,7 +38,7 @@ class AudioProcessor(Dataset):
                 for line in f.readlines():
                     line = line.strip()
                     if line != '':
-                        self.text_list.append(line.split(' ', 1)[-1])
+                        self.text_list.append(line.split(' ', 1)[-1].lower())
                         audio_path = audio_path_pre + '/' + line.split(' ', 1)[0] + '.flac'
                         self.audio_path_list.append(audio_path)
 
@@ -77,11 +77,4 @@ processors = {
 output_modes = {
     "wave2text": "text"
 }
-# test train_dataset
-# train_dataset = AudioProcessor("data-asr/LibriSpeech/test-clean")
-# audio_train_dataloader = DataLoader(
-#     train_dataset, batch_size=8
-# )
-# audio_epoch_iterator = tqdm(audio_train_dataloader, desc="Iteration")
-# for step, batch in enumerate(audio_epoch_iterator):
-#     print(batch[0])
+

@@ -156,7 +156,7 @@ def train(args, train_dataset, model):
 
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     if (
-                        args.local_rank == -1 and args.evaluate_during_training
+                        args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
                         dev_acc = evaluate(args, model, data_type="dev")['acc']
                         if dev_acc > best_dev_acc:
@@ -236,15 +236,15 @@ def evaluate(args, model, data_type="test"):
             eval_loss += tmp_eval_loss.mean().item()
         nb_eval_steps += 1
         if preds is None:
-            preds = logits.detach().cpu().numpy()
+            preds = np.argmax(logits.detach().cpu().numpy(), axis=1)  
             out_label_ids = labels_ids.detach().cpu().numpy()
         else:
-            preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(out_label_ids, labels_ids.detach().cpu().numpy(), axis=0)
+            if len(preds) == len(logits):
+                preds = np.append(preds, np.argmax(logits.detach().cpu().numpy(), axis=1), axis=1)
+                out_label_ids = np.append(out_label_ids, labels_ids.detach().cpu().numpy(), axis=1)
 
         eval_loss = eval_loss / nb_eval_steps
-
-        preds = np.argmax(preds, axis=2)   
+ 
 
         result = compute_metrics(preds, out_label_ids)
         results.update(result)
@@ -347,10 +347,10 @@ def main():
     )
 
     parser.add_argument(
-        "--per_gpu_train_batch_size", default=8, type=int, help="Batch size per GPU/CPU for training.",
+        "--per_gpu_train_batch_size", default=1, type=int, help="Batch size per GPU/CPU for training.",
     )
     parser.add_argument(
-        "--per_gpu_eval_batch_size", default=8, type=int, help="Batch size per GPU/CPU for evaluation.",
+        "--per_gpu_eval_batch_size", default=1, type=int, help="Batch size per GPU/CPU for evaluation.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -373,7 +373,7 @@ def main():
     )
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=50, help="Log every X updates steps.")
+    parser.add_argument("--logging_steps", type=int, default=1000, help="Log every X updates steps.")
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
     parser.add_argument(
         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory",

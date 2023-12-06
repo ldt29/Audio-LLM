@@ -223,8 +223,8 @@ class ALLM(nn.Module):
         )
         logits = outputs.logits[:,-labels_ids.size(1)-1:-1,:]
         
-        logits = logits.transpose(1, 2)
-        loss = self.loss_fc(self.softmax(logits), labels_ids)
+        logits = self.softmax(logits).transpose(1, 2)
+        loss = self.loss_fc(logits, labels_ids)
 
 
         return loss,logits,labels_ids
