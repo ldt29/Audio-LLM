@@ -236,11 +236,11 @@ def evaluate(args, model, data_type="test"):
             eval_loss += tmp_eval_loss.mean().item()
         nb_eval_steps += 1
         if preds is None:
-            preds = np.argmax(logits.detach().cpu().numpy(), axis=1)  
+            preds = np.argmax(logits.detach().cpu().numpy(), axis=2)  
             out_label_ids = labels_ids.detach().cpu().numpy()
         else:
             if len(preds) == len(logits): 
-                preds = np.append(preds, np.argmax(logits.detach().cpu().numpy(), axis=1), axis=1)
+                preds = np.append(preds, np.argmax(logits.detach().cpu().numpy(), axis=2), axis=1)
                 out_label_ids = np.append(out_label_ids, labels_ids.detach().cpu().numpy(), axis=1)
 
         eval_loss = eval_loss / nb_eval_steps

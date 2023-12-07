@@ -217,7 +217,7 @@ class ALLM(nn.Module):
             attention_mask=atts,
             labels = mask_labels_ids
         )
-        logits = outputs.logits[:,-labels_ids.shape[1]-1:,:]
+        logits = outputs.logits[:,-labels_ids.shape[1]-1:-1,:]
         
         loss = outputs.loss
 
