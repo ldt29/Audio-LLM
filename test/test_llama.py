@@ -24,6 +24,12 @@ vicuna_path = "lmsys/vicuna-7b-v1.5"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+llama_tokenizer = LlamaTokenizer.from_pretrained(vicuna_path, use_fast=False)
+llama_tokenizer.add_special_tokens({'pad_token': '[PAD]'}) 
+
+llama_tokenizer.pad_token_id = 0
+llama_tokenizer.padding_side = "right"
+
 llama_model = LlamaForCausalLM.from_pretrained(
                 vicuna_path,
                 torch_dtype=torch.float16,
@@ -41,12 +47,9 @@ peft_config = LoraConfig(
 llama_model = get_peft_model(llama_model, peft_config)
 
 # tokenizer
-llama_tokenizer = LlamaTokenizer.from_pretrained(vicuna_path, use_fast=False)
-llama_tokenizer.add_special_tokens({'pad_token': '[PAD]'}) 
-llama_tokenizer.padding_side = "right"
 
 
-labels = ["i like you.","i love you."]
+labels = ["i like you very much.","i love you."]
 
 labels_ids = llama_tokenizer(
             labels,
@@ -73,3 +76,4 @@ preds = outputs.logits.detach().cpu().numpy()
 preds = np.argmax(preds, axis=2)   
 print(preds)
 print(labels_ids)
+print(llama_model.config.pad_token_id)

@@ -9,13 +9,17 @@
 
 ### train parallel 
 ```
-python train.py --train_data_dir data-asr/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output --do_train --do_eval --evaluate_during_training --overwrite_output_dir
+python pre_train.py --train_data_dir data-asr/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output --do_train --do_eval --evaluate_during_training --overwrite_output_dir
 ```
 ### torchrun one gpu
 ```
-torchrun train.py --train_data_dir data-asr/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output --do_train --do_eval --evaluate_during_training --overwrite_output_dir --local_rank 0
+torchrun --master_port 23343 pre_train.py --train_data_dir data-asr/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output --do_train --do_eval --evaluate_during_training --overwrite_output_dir --local_rank 0
 ```
 ### inference
 ```
 python inference.py  --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --ckpt_path output/best_model.pt
+```
+wav path:
+```
+data-asr/LibriSpeech/train-clean-100/19/198/19-198-0000.flac
 ```

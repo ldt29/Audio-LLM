@@ -90,6 +90,7 @@ class ALLM(nn.Module):
         # tokenizer
         self.llama_tokenizer = LlamaTokenizer.from_pretrained(args.vicuna_path, use_fast=False)
         self.llama_tokenizer.add_special_tokens({'pad_token': '[PAD]'}) 
+        self.llama_tokenizer.pad_token_id = 0
         self.llama_tokenizer.padding_side = "right"
 
         # proj
@@ -167,7 +168,6 @@ class ALLM(nn.Module):
         )
         speech_embeds = self.speech_llama_proj(query_output.last_hidden_state)
         speech_embeds = speech_embeds.view(B, -1, speech_embeds.size(2)).contiguous()
-        speech_atts = torch.ones(speech_embeds.size()[:-1], dtype=torch.long).to(speech_embeds.device)
 
         # USER: <Speech>speech_embeds<Speech> prompt\nASSISTANT:
         embed_tokens = self.llama_model.model.model.embed_tokens if self.lora else self.llama_model.model.embed_tokens
@@ -186,46 +186,40 @@ class ALLM(nn.Module):
         ).to(speech_embeds.device).input_ids
         prompt_right_embeds = embed_tokens(prompt_right_ids)
         prompt_right_embeds = prompt_right_embeds.repeat(batch_size,1,1)
-        bos_embeds = self.llama_model.model.embed_tokens(
+        bos_embeds = embed_tokens(
             torch.ones(
                 [batch_size, 1],
                 dtype=torch.long,
                 device=device,
             ) * self.llama_tokenizer.bos_token_id
-        ) if not self.lora else self.llama_model.model.model.embed_tokens(
-            torch.ones(
-                [batch_size, 1],
-                dtype=torch.long,
-                device=device,
-            ) * self.llama_tokenizer.bos_token_id
-        )
-        # print(bos_embeds.shape) torch.Size([8, 1, 4096]) 
-        # print(prompt_left_embeds.shape) torch.Size([8, 7, 4096])
-        # print(speech_embeds.shape) torch.Size([8, 88, 4096])
-        # print(prompt_right_embeds.shape) torch.Size([8, 16, 4096])
+        ) 
         labels_ids = self.llama_tokenizer(
             labels,
             return_tensors="pt",
-            add_special_tokens=False,
+            add_special_tokens=True,
             padding = True
         ).to(device).input_ids
         labels_embeds = embed_tokens(labels_ids)
-        embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds, labels_embeds], dim=1)
-        atts = torch.ones(embeds.size()[:-1], dtype=torch.long).to(device)
-        embeds = embeds.to(torch.float16)
-
+        embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds, labels_embeds], dim=1).to(torch.float16)
+        embed_length = embeds.size(1)
+        sequence_length = labels_ids.size(1)
+        mask_embeds_ids =  torch.ones(
+                [batch_size, embed_length-sequence_length],
+                dtype=torch.long,
+                device=device,
+            ) * (-100)
+        atts = torch.ones([batch_size,embed_length], dtype=torch.long, device=device)
+        mask_labels_ids = torch.cat([mask_embeds_ids, labels_ids],dim=1)
         # predict
-        # print(embeds.shape)  torch.Size([8, 112, 4096])
-        # print(labels_ids.shape) torch.Size([8, 125])
+
         outputs = self.llama_model(
             inputs_embeds=embeds,
             attention_mask=atts,
+            labels = mask_labels_ids
         )
-        logits = outputs.logits[:,-labels_ids.size(1)-1:-1,:]
+        logits = outputs.logits[:,-labels_ids.shape[1]-1:,:]
         
-        logits = self.softmax(logits).transpose(1, 2)
-        loss = self.loss_fc(logits, labels_ids)
-
+        loss = outputs.loss
 
         return loss,logits,labels_ids
         

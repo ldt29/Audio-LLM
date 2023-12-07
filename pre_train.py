@@ -239,7 +239,7 @@ def evaluate(args, model, data_type="test"):
             preds = np.argmax(logits.detach().cpu().numpy(), axis=1)  
             out_label_ids = labels_ids.detach().cpu().numpy()
         else:
-            if len(preds) == len(logits):
+            if len(preds) == len(logits): 
                 preds = np.append(preds, np.argmax(logits.detach().cpu().numpy(), axis=1), axis=1)
                 out_label_ids = np.append(out_label_ids, labels_ids.detach().cpu().numpy(), axis=1)
 
@@ -347,10 +347,10 @@ def main():
     )
 
     parser.add_argument(
-        "--per_gpu_train_batch_size", default=1, type=int, help="Batch size per GPU/CPU for training.",
+        "--per_gpu_train_batch_size", default=8, type=int, help="Batch size per GPU/CPU for training.",
     )
     parser.add_argument(
-        "--per_gpu_eval_batch_size", default=1, type=int, help="Batch size per GPU/CPU for evaluation.",
+        "--per_gpu_eval_batch_size", default=8, type=int, help="Batch size per GPU/CPU for evaluation.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -373,7 +373,7 @@ def main():
     )
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=1000, help="Log every X updates steps.")
+    parser.add_argument("--logging_steps", type=int, default=2000, help="Log every X updates steps.")
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
     parser.add_argument(
         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory",
