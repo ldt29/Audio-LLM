@@ -13,7 +13,7 @@ from tqdm import tqdm, trange
 
 from model import ALLM
 from optimizer import AdamW, get_linear_schedule_with_warmup
-from data_utils import processors, output_modes,  compute_metrics, load_and_cache_audio_examples  
+from data_utils.data_utils_ER import compute_metrics, load_and_cache_examples  
 
 from typing import Dict, List, Tuple
 
@@ -31,16 +31,16 @@ def train(args, train_dataset, model):
     """ Train the model """
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     
-    audio_train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
-    audio_train_dataloader = DataLoader(
-        train_dataset, sampler=audio_train_sampler, batch_size=args.train_batch_size
+    train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
+    train_dataloader = DataLoader(
+        train_dataset, sampler=train_sampler, batch_size=args.train_batch_size
     )
 
     if args.max_steps > 0:
         t_total = args.max_steps
-        args.num_train_epochs = args.max_steps // (len(audio_train_dataloader) // args.gradient_accumulation_steps) + 1
+        args.num_train_epochs = args.max_steps // (len(train_dataloader) // args.gradient_accumulation_steps) + 1
     else:
-        t_total = len(audio_train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
+        t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
 
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -96,8 +96,8 @@ def train(args, train_dataset, model):
             global_step = int(args.output_dir.split("-")[-1].split("/")[0])
         except ValueError:
             global_step = 0
-        epochs_trained = global_step // (len(audio_train_dataloader) // args.gradient_accumulation_steps)
-        steps_trained_in_current_epoch = global_step % (len(audio_train_dataloader) // args.gradient_accumulation_steps)
+        epochs_trained = global_step // (len(train_dataloader) // args.gradient_accumulation_steps)
+        steps_trained_in_current_epoch = global_step % (len(train_dataloader) // args.gradient_accumulation_steps)
 
         logger.info("  Continuing training from checkpoint, will skip to saved global_step")
         logger.info("  Continuing training from epoch %d", epochs_trained)
@@ -114,11 +114,10 @@ def train(args, train_dataset, model):
     best_dev_acc=0
     saved_model=False
     for _ in train_iterator:
-        audio_epoch_iterator = tqdm(audio_train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         #########################################  Your Code  ###########################################
         # todo
         # get batch and batch by iterating the text_poch_iterator and audio_epoch_iterator
-        iterator =  audio_epoch_iterator
         for step, batch in enumerate(iterator):
         
         #################################################################################################
@@ -131,7 +130,9 @@ def train(args, train_dataset, model):
             ###################################################################################
             inputs = batch[0]
             labels = batch[1]
-            outputs = model(inputs,"please convert this audio to text.", labels,device=args.device)
+            prompt = batch[2][0]
+
+            outputs = model(inputs,prompt, labels,device=args.device)
             # compute word error rate
             loss = outputs[0]
 
@@ -202,7 +203,7 @@ def save_model(model,optimizer,scheduler,args,output_dir):
 def evaluate(args, model, data_type="test"):
     eval_output_dir=args.output_dir
     results = {}
-    eval_dataset = load_and_cache_audio_examples(args, data_type=data_type)
+    eval_dataset = load_and_cache_examples(args, data_type=data_type)
 
     if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
         os.makedirs(eval_output_dir)
@@ -228,9 +229,10 @@ def evaluate(args, model, data_type="test"):
         model.eval()
         inputs = batch[0]
         labels = batch[1]
+        prompt = batch[2][0]
 
         with torch.no_grad():
-            outputs = model(inputs,"please convert this audio to text.", labels,device=args.device)
+            outputs = model(inputs, prompt, labels,device=args.device)
             tmp_eval_loss, logits, labels_ids = outputs[:3]
 
             eval_loss += tmp_eval_loss.mean().item()
@@ -311,13 +313,13 @@ def main():
     )
     parser.add_argument(
         "--dev_data_dir",
-        default="data-asr/LibriSpeech/dev-clean",
+        default="data/LibriSpeech/dev-clean",
         type=str,
         help="The valid input data dir. Should contain the .wav files (or other data files) for the task.",
     )
     parser.add_argument(
         "--test_data_dir",
-        default="data-asr/LibriSpeech/test-clean",
+        default="data/LibriSpeech/test-clean",
         type=str,
         help="The test input data dir. Should contain the .wav files (or other data files) for the task.",
     )
@@ -434,7 +436,7 @@ def main():
 
     # Training
     if args.do_train:
-        audio_train_dataset = load_and_cache_audio_examples(args, data_type='train')
+        audio_train_dataset = load_and_cache_examples(args, data_type='train')
         global_step, tr_loss = train(args, audio_train_dataset, model)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
         # result = evaluate(args, model, tokenizer, prefix="")

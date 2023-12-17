@@ -6,20 +6,31 @@
 5. Download [salmonn v1](https://huggingface.co/tsinghua-ee/SALMONN/blob/main/salmonn_v1.pth) to ```ckpt_path```.
 6. Download [LibriSpeech](http://www.openslr.org/12/) to ```data_dir```
 
-
+## ASR
 ### train parallel 
 ```
-python pre_train.py --train_data_dir data-asr/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output --do_train --do_eval --evaluate_during_training --overwrite_output_dir
+python train_asr.py --train_data_dir data/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output --do_train --do_eval --evaluate_during_training --overwrite_output_dir
 ```
 ### torchrun one gpu
 ```
-torchrun --master_port 23343 pre_train.py --train_data_dir data-asr/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output --do_train --do_eval --evaluate_during_training --overwrite_output_dir --local_rank 0
+torchrun --master_port 23343 train.py --train_data_dir data/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output_asr --do_train --do_eval --evaluate_during_training --overwrite_output_dir --local_rank 0
 ```
-### inference
+## ER
+### train parallel 
+```
+python train_er.py --train_data_dir data/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output --do_train --do_eval --evaluate_during_training --overwrite_output_dir
+```
+### torchrun one gpu
+```
+torchrun --master_port 23343 train_er.py --train_data_dir data/LibriSpeech/train-clean-100 --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --output_dir output_er --do_train --do_eval --evaluate_during_training --overwrite_output_dir --local_rank 0
+```
+
+
+## Inference
 ```
 python inference.py  --vicuna_path lmsys/vicuna-7b-v1.5 --whisper_path openai/whisper-tiny --beats_path beats-path/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt2.pt --ckpt_path output/best_model.pt
 ```
 wav path:
 ```
-data-asr/LibriSpeech/train-clean-100/19/198/19-198-0000.flac
+data/LibriSpeech/train-clean-100/19/198/19-198-0000.flac
 ```

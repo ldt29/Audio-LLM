@@ -18,7 +18,7 @@ from torch.utils.data.distributed import DistributedSampler
 logger = logging.getLogger(__name__)
 
 
-class AudioProcessor(Dataset):
+class ASRProcessor(Dataset):
     # Audio Speech Recognition Processor
     # get audio file name and text
     # example:
@@ -32,6 +32,16 @@ class AudioProcessor(Dataset):
         self.text_path_list = glob.glob(os.path.join(data_dir, '*', '*', '*.txt'))
         self.text_list = []
         self.audio_path_list = []
+        self.prompts = ['please convert this audio to text.',
+                        'please convert this audio to text',
+                        'convert this audio to text, please',
+                        'convert this audio to text.',
+                        'convert this audio to text',
+                        'convert it to text.',
+                        'convert it.',
+                        'convert it, please.',
+                        'convert it, please']
+        
         for text_path in self.text_path_list:
             with open(text_path, 'r') as f:
                 audio_path_pre = text_path.rsplit('/', 1)[0]
@@ -48,7 +58,7 @@ class AudioProcessor(Dataset):
         return len(self.audio_path_list)
     
     def __getitem__(self, idx):
-        return self.audio_path_list[idx], self.text_list[idx]
+        return self.audio_path_list[idx], self.text_list[idx], self.prompts[idx%len(self.prompts)]
 
 
 def compute_metrics(preds, labels):
@@ -59,7 +69,7 @@ def compute_metrics(preds, labels):
     
 
 
-def load_and_cache_audio_examples(args,data_type,evaluate=False):
+def load_and_cache_examples(args,data_type,evaluate=False):
     if data_type=='train':
         processor = processors["wave2text"](args.train_data_dir)
     elif data_type=='dev':
@@ -71,7 +81,7 @@ def load_and_cache_audio_examples(args,data_type,evaluate=False):
 
 
 processors = {
-    "wave2text": AudioProcessor,
+    "wave2text": ASRProcessor,
 }
 
 output_modes = {
