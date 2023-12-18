@@ -16,7 +16,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     model = ALLM(
-        args=args
+        args=args,
+        lora_alpha=4
     )
     model.to(args.device)
     model.eval()

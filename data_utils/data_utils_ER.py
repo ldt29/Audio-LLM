@@ -14,23 +14,15 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
+from torchaudio.datasets.iemocap import IEMOCAP
 
 logger = logging.getLogger(__name__)
-
-def get_txt_files(file_dir):
-        L = []
-        for root, dirs, files, in os.walk(file_dir):
-                for file in files:
-                    if os.path.splitext(file)[1] == '.txt':
-                        filename = os.path.join(root, file)
-                        L.append(filename)
-        return L
 
 def get_IEMOCAP_9target(target):
     # 'ang':  anger 
     # 'hap':  happiness 
     # 'exc':  excitement 
-    # 'sad':  sadness 
+    # 'sad':  sadness
     # 'fru':  frustration 
     # 'fea':  fear 
     # 'sur':  surprise 
@@ -58,64 +50,38 @@ def get_IEMOCAP_9target(target):
     else:
         print(target)
         target=None
-        print("error")
+        print("Error, skip!")
 
     return target
 
+class ERProcessor(IEMOCAP):
+    def __init__(self, data_dir, sessions):
+        super().__init__(data_dir, sessions)
+        self.prompts = ['Please give me the emotion of this speech. The emotion of this speech is ',
+                        'What is the emotion of this speech? The emotion of this speech is',
+                        'Please tell me the emotion of this speech. The emotion of this speech is',
+                        'I want to know the emotion of this speech. The emotion of this speech is',
+                        'Tell me the emotion of this speech. The emotion of this speech is']
 
+    def __getitem__(self,idx):
+        metadata = self.get_metadata(idx)
+        return str(self._path)+'/'+metadata[0], get_IEMOCAP_9target(metadata[3]), self.prompts[idx%len(self.prompts)]
 
-class ERProcessor(Dataset):
-    def __init__(self, data_dir):
-
-        assert os.path.isfile(data_dir)
-
-        # read IEMOCAP file
-        all_data = []
-        Sessions = ['Session1', 'Session2', 'Session3', 'Session4', 'Session5']
-        target_dir = "/data/ER/"
-        wav_dir = "/sentences/wav"
-        
-        for Session in Sessions:
-            file_dir = data_dir + Session + target_dir
-            txt_files = get_txt_files[file_dir]
-            
-            for txt_file in txt_files:
-                last_folder = (txt_file.split("/")[-1]).split(".")[0]
-                data = pd.read_csv(txt_file, delimiter="\n", skiprows=1, names='a')
-                data['a'] = data['a'].astype(str)
-
-                filter_data=[x for x in data['a'] if '[' in x]
-
-                print(txt_file, len(filter_data))
-
-                for file in filter_data:
-                    values = file.split("\t")
-                    filename = values[1] + ".wav"
-                    filename = data_dir + Session + wav_dir + last_folder + "/" + filename
-
-                    target = values[2]
-
-                    target = get_IEMOCAP_9target(target)
-
-                    if target == None:
-                        print(target)
-                        continue
-                    result = (filename, target)
-                    all_data.append(result)
-        
-        self.example = all_data
-        
-    def __len__(self):
-        return len(self.examples)
-
-    def __getitem__(self, item):
-        return torch.tensor(self.examples[item], dtype=torch.long)
 
 def compute_metrics(preds, labels):
     assert len(preds) == len(labels)
-    
-def load_and_cache_examples(args,evaluate=False):
-    pass
+    # return average word error rate
+    return {"acc": (preds == labels).mean()}
+
+def load_and_cache_examples(args, data_type, evaluate=False):
+    if data_type=='train':
+        processor = processors["wave2text"](args.train_data_dir,('1', '2', '3', '4'))
+    elif data_type=='dev':
+        processor = processors["wave2text"](args.dev_data_dir,('5'))
+    else:
+        processor = processors["wave2text"](args.test_data_dir,('5'))
+
+    return processor
 
 
 
@@ -129,3 +95,24 @@ output_modes = {
 }
 
 
+# def get_metadata(self, n: int) -> Tuple[str, int, str, str, str]:
+#         """Get metadata for the n-th sample from the dataset. Returns filepath instead of waveform,
+#         but otherwise returns the same fields as :py:meth:`__getitem__`.
+
+#         Args:
+#             n (int): The index of the sample to be loaded
+
+#         Returns:
+#             Tuple of the following items;
+
+#             str:
+#                 Path to audio
+#             int:
+#                 Sample rate
+#             str:
+#                 File name
+#             str:
+#                 Label (one of ``"neu"``, ``"hap"``, ``"ang"``, ``"sad"``, ``"exc"``, ``"fru"``)
+#             str:
+#                 Speaker
+#         """

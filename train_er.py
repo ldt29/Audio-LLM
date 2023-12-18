@@ -313,13 +313,13 @@ def main():
     )
     parser.add_argument(
         "--dev_data_dir",
-        default="data/LibriSpeech/dev-clean",
+        default="data",
         type=str,
         help="The valid input data dir. Should contain the .wav files (or other data files) for the task.",
     )
     parser.add_argument(
         "--test_data_dir",
-        default="data/LibriSpeech/test-clean",
+        default="data",
         type=str,
         help="The test input data dir. Should contain the .wav files (or other data files) for the task.",
     )
@@ -375,7 +375,7 @@ def main():
     )
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=2000, help="Log every X updates steps.")
+    parser.add_argument("--logging_steps", type=int, default=1000, help="Log every X updates steps.")
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
     parser.add_argument(
         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory",
