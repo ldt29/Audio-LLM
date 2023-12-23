@@ -110,7 +110,8 @@ class ALLM(nn.Module):
         inputs,
         prompt,
         labels,
-        prompt_pattern="USER: <Speech><SpeechHere></Speech> {}\nASSISTANT:",
+        prompt_pattern="<Speech><SpeechHere></Speech> {}",
+        #prompt_pattern="USER: <Speech><SpeechHere></Speech> {}\nASSISTANT:",
         device='cuda:0',
     ):
         # read wav
@@ -123,12 +124,11 @@ class ALLM(nn.Module):
             if len(wav) > 30 * sr:
                 wav = wav[: 30 * sr]
             if len(wav) < 30 * sr:
-                wav = np.concatenate((wav, np.zeros(30 * 16000 - len(wav))))
+                wav = np.concatenate((wav, np.zeros(30 * sr - len(wav))))
             if sr != 16000:
                 wav = librosa.resample(wav, orig_sr=sr, target_sr=16000, res_type="fft")
             wav_np[batch_size] = wav
             batch_size += 1
-        
         # whisper
         spectrogram = self.feature_extractor(wav_np, return_tensors="pt", sampling_rate=16000).input_features.to(device) # [1, 80, 3000]
         speech_embeds = self.speech_encoder(spectrogram, return_dict=True).last_hidden_state
@@ -193,6 +193,17 @@ class ALLM(nn.Module):
                 device=device,
             ) * self.llama_tokenizer.bos_token_id
         ) 
+
+        eos_token_ids = torch.ones(
+                [batch_size, 1],
+                dtype=torch.long,
+                device=device,
+            ) * self.llama_tokenizer.eos_token_id
+        
+        eos_embeds = embed_tokens(
+            eos_token_ids
+        )
+
         labels_ids = self.llama_tokenizer(
             labels,
             return_tensors="pt",
@@ -200,16 +211,16 @@ class ALLM(nn.Module):
             padding = True
         ).to(device).input_ids
         labels_embeds = embed_tokens(labels_ids)
-        embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds, labels_embeds], dim=1).to(torch.float16)
+        embeds = torch.cat([bos_embeds, prompt_left_embeds, speech_embeds, prompt_right_embeds, labels_embeds, eos_embeds], dim=1).to(torch.float16)
         embed_length = embeds.size(1)
-        sequence_length = labels_ids.size(1)
+        sequence_length = labels_ids.size(1)+1
         mask_embeds_ids =  torch.ones(
                 [batch_size, embed_length-sequence_length],
                 dtype=torch.long,
                 device=device,
             ) * (-100)
         atts = torch.ones([batch_size,embed_length], dtype=torch.long, device=device)
-        mask_labels_ids = torch.cat([mask_embeds_ids, labels_ids],dim=1)
+        mask_labels_ids = torch.cat([mask_embeds_ids, labels_ids, eos_token_ids],dim=1)
         # predict
 
         outputs = self.llama_model(
@@ -217,7 +228,7 @@ class ALLM(nn.Module):
             attention_mask=atts,
             labels = mask_labels_ids
         )
-        logits = outputs.logits[:,-labels_ids.shape[1]-1:-1,:]
+        logits = outputs.logits[:,-labels_ids.shape[1]-2:-2,:]
         
         loss = outputs.loss
 
@@ -228,6 +239,7 @@ class ALLM(nn.Module):
         wav_path,
         prompt,
         prompt_pattern="USER: <Speech><SpeechHere></Speech> {}\nASSISTANT:",
+        # prompt_pattern="<Speech><SpeechHere></Speech> {}",
         device='cuda:0',
         max_length=200,
         num_beams=4,

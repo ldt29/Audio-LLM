@@ -13,7 +13,7 @@ from tqdm import tqdm, trange
 
 from model import ALLM
 from optimizer import AdamW, get_linear_schedule_with_warmup
-from data_utils.data_utils_ASR import compute_asr_metrics, load_and_cache_asr_examples  
+from data_utils.data_utils_ft import compute_metrics, load_and_cache_examples  
 
 from typing import Dict, List, Tuple
 
@@ -116,7 +116,6 @@ def train(args, train_dataset, model):
     for _ in train_iterator:
         iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(iterator):
-    
             if steps_trained_in_current_epoch > 0:
                 steps_trained_in_current_epoch -= 1
                 continue
@@ -126,7 +125,7 @@ def train(args, train_dataset, model):
             labels = batch[1]
             prompt = batch[2][0]
 
-            outputs = model(inputs, prompt, labels, device=args.device)
+            outputs = model(inputs,prompt, labels,device=args.device)
             # compute word error rate
             loss = outputs[0]
 
@@ -197,7 +196,7 @@ def save_model(model,optimizer,scheduler,args,output_dir):
 def evaluate(args, model, data_type="test"):
     eval_output_dir=args.output_dir
     results = {}
-    eval_dataset = load_and_cache_asr_examples(data_type=data_type)
+    eval_dataset = load_and_cache_examples(args, data_type=data_type)
 
     if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
         os.makedirs(eval_output_dir)
@@ -242,7 +241,7 @@ def evaluate(args, model, data_type="test"):
         eval_loss = eval_loss / nb_eval_steps
  
 
-        result = compute_asr_metrics(preds, out_label_ids)
+        result = compute_metrics(preds, out_label_ids)
         results.update(result)
 
         if not os.path.exists(os.path.join(eval_output_dir, data_type)):
@@ -262,6 +261,13 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Required parameters
+    parser.add_argument(
+        "--train_data_dir",
+        default=None,
+        type=str,
+        required=True,
+        help="The input data dir. Should contain the .wav files (or other data files) for the task.",
+    )
     parser.add_argument(
         "--vicuna_path",
         default=None,
@@ -297,6 +303,18 @@ def main():
         default=None,
         type=str,
         help="Path to pre-trained model or shortcut name selected in the list:",
+    )
+    parser.add_argument(
+        "--dev_data_dir",
+        default="data",
+        type=str,
+        help="The valid input data dir. Should contain the .wav files (or other data files) for the task.",
+    )
+    parser.add_argument(
+        "--test_data_dir",
+        default="data",
+        type=str,
+        help="The test input data dir. Should contain the .wav files (or other data files) for the task.",
     )
     parser.add_argument(
         "--config_name", default="", type=str, help="Pretrained config name or path if not the same as model_name",
@@ -350,7 +368,7 @@ def main():
     )
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=2000, help="Log every X updates steps.")
+    parser.add_argument("--logging_steps", type=int, default=1000, help="Log every X updates steps.")
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
     parser.add_argument(
         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory",
@@ -411,8 +429,8 @@ def main():
 
     # Training
     if args.do_train:
-        audio_train_dataset = load_and_cache_asr_examples(data_type='train')
-        global_step, tr_loss = train(args, audio_train_dataset, model)
+        train_dataset = load_and_cache_examples(args, data_type='train')
+        global_step, tr_loss = train(args, train_dataset, model)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
         # result = evaluate(args, model, tokenizer, prefix="")
 

@@ -1,7 +1,7 @@
 import sys
 sys.path.append('/home/lidongting/courses/NLP/project/ALLM')
 print(sys.path)
-from data_utils.data_utils_ASR import LibriSpeechASRProcessor
+from data_utils.data_utils_pre import ASRProcessor
 import numpy as np
 import torch
 from tqdm import tqdm, trange
@@ -11,12 +11,15 @@ from torch.utils.data.distributed import DistributedSampler
 
 
 # test train_dataset
-train_dataset = LibriSpeechASRProcessor("train")
+train_dataset = ASRProcessor('train')
 audio_train_dataloader = DataLoader(
     train_dataset, batch_size=8, shuffle = True
 )
 audio_epoch_iterator = tqdm(audio_train_dataloader, desc="Iteration")
 
-print(train_dataset[11])
+print(train_dataset[1])
 
-
+max_length = 0
+for idx in range(len(train_dataset)):
+    if len(train_dataset[idx][1])>200:
+        print(train_dataset[idx][1])

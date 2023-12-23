@@ -5,7 +5,7 @@ from model import ALLM
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("--device", type=str, default="cuda:5")
     parser.add_argument("--ckpt_path", type=str, default=None)
     parser.add_argument("--whisper_path", type=str, default=None)
     parser.add_argument("--beats_path", type=str, default=None)
@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     model = ALLM(
         args=args,
-        lora_alpha=4
+        lora_alpha=16
     )
     model.to(args.device)
     model.eval()
@@ -29,7 +29,7 @@ if __name__ == "__main__":
             print("Output:")
             # for environment with cuda>=117
             with torch.cuda.amp.autocast(dtype=torch.float16):
-                print(model.generate(wav_path, prompt=prompt)[0])
+                print(model.generate(wav_path, prompt=prompt, device=args.device)[0])
         except Exception as e:
             print(e)
             if args.debug:

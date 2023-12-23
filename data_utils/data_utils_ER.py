@@ -54,44 +54,38 @@ def get_IEMOCAP_9target(target):
 
     return target
 
-class ERProcessor(IEMOCAP):
-    def __init__(self, data_dir, sessions):
-        super().__init__(data_dir, sessions)
-        self.prompts = ['Please give me the emotion of this speech. The emotion of this speech is ',
-                        'What is the emotion of this speech? The emotion of this speech is',
-                        'Please tell me the emotion of this speech. The emotion of this speech is',
-                        'I want to know the emotion of this speech. The emotion of this speech is',
-                        'Tell me the emotion of this speech. The emotion of this speech is']
+class IEMOCAPERProcessor(IEMOCAP):
+    def __init__(self, data_type):
+        if data_type=='train':
+            sessions = ('1', '2', '3', '4')
+        else:
+            sessions = ('5')
+        super().__init__('data', sessions)
+        self.prompts = ['The front one is speech audio, and the emotion of this speech is']
 
     def __getitem__(self,idx):
         metadata = self.get_metadata(idx)
         return str(self._path)+'/'+metadata[0], get_IEMOCAP_9target(metadata[3]), self.prompts[idx%len(self.prompts)]
 
 
-def compute_metrics(preds, labels):
+def compute_er_metrics(preds, labels):
     assert len(preds) == len(labels)
     # return average word error rate
     return {"acc": (preds == labels).mean()}
 
-def load_and_cache_examples(args, data_type, evaluate=False):
-    if data_type=='train':
-        processor = processors["wave2text"](args.train_data_dir,('1', '2', '3', '4'))
-    elif data_type=='dev':
-        processor = processors["wave2text"](args.dev_data_dir,('5'))
-    else:
-        processor = processors["wave2text"](args.test_data_dir,('5'))
+def load_and_cache_er_examples(data_type):
 
-    return processor
+    return processors["er"](data_type)
 
 
 
 
 processors = {
-    "wave2text": ERProcessor,
+    "er": IEMOCAPERProcessor,
 }
 
 output_modes = {
-    "wave2text": "text"
+    "er": "text"
 }
 
 
