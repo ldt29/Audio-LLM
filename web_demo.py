@@ -125,7 +125,8 @@ with gr.Blocks() as demo:
                 ["resource/audio_demo/orchard.flac", "Please list each event in the audio in order."],
                 ["resource/audio_demo/orchard.flac", "Based on the audio, write a story in detail. Your story should be highly related to the audio."],
                 ["resource/audio_demo/orchard.flac", "How many speakers did you hear in this audio? Who are they?"],
-                ["resource/audio_demo/idonthear.wav", "Describe the emotion of the speaker."]
+                ["resource/audio_demo/idonthear.wav", "Describe the emotion of the speaker."],
+                ["resource/audio_demo/music.wav", "Please describe the music in detail."],
             ],
             inputs=[speech, text_input]
         )
