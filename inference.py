@@ -5,7 +5,7 @@ from model import ALLM
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--device", type=str, default="cuda:5")
+    parser.add_argument("--device", type=str, default="cuda:3")
     parser.add_argument("--ckpt_path", type=str, default=None)
     parser.add_argument("--whisper_path", type=str, default=None)
     parser.add_argument("--beats_path", type=str, default=None)

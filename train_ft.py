@@ -196,7 +196,7 @@ def save_model(model,optimizer,scheduler,args,output_dir):
 def evaluate(args, model, data_type="test"):
     eval_output_dir=args.output_dir
     results = {}
-    eval_dataset = load_and_cache_examples(args, data_type=data_type)
+    eval_dataset = load_and_cache_examples(data_type=data_type)
 
     if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
         os.makedirs(eval_output_dir)
@@ -429,7 +429,7 @@ def main():
 
     # Training
     if args.do_train:
-        train_dataset = load_and_cache_examples(args, data_type='train')
+        train_dataset = load_and_cache_examples(data_type='train')
         global_step, tr_loss = train(args, train_dataset, model)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
         # result = evaluate(args, model, tokenizer, prefix="")

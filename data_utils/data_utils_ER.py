@@ -61,7 +61,7 @@ class IEMOCAPERProcessor(IEMOCAP):
         else:
             sessions = ('5')
         super().__init__('data', sessions)
-        self.prompts = ['The front one is speech audio, and the emotion of this speech is']
+        self.prompts = ['The front one is speech audio, please give me the emotion of this speech.']
 
     def __getitem__(self,idx):
         metadata = self.get_metadata(idx)

@@ -110,8 +110,8 @@ class ALLM(nn.Module):
         inputs,
         prompt,
         labels,
-        prompt_pattern="<Speech><SpeechHere></Speech> {}",
-        #prompt_pattern="USER: <Speech><SpeechHere></Speech> {}\nASSISTANT:",
+        # prompt_pattern="<Speech><SpeechHere></Speech> {}",
+        prompt_pattern="USER: <Speech><SpeechHere></Speech> {}\nASSISTANT:",
         device='cuda:0',
     ):
         # read wav

@@ -16,31 +16,22 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampl
 from torch.utils.data.distributed import DistributedSampler
 
 
-from data_utils.data_utils_ASR import ASRProcessor
-from data_utils.data_utils_ER import ERProcessor
+from data_utils.data_utils_ER import IEMOCAPERProcessor
 
 logger = logging.getLogger(__name__)
 
-class AudioProcessor(Dataset):
+class FTProcessor(Dataset):
     def __init__(self, data_type):
-        if data_type=='train':
-            self.asr_processor = ASRProcessor("data/LibriSpeech/train-clean-100")
-            self.er_processor = ERProcessor("data",('1', '2', '3', '4'))
-        elif data_type=='dev':
-            self.asr_processor = ASRProcessor("data/LibriSpeech/dev-clean")
-            self.er_processor = ERProcessor("data",('5'))
-        else:
-            self.asr_processor = ASRProcessor("data/LibriSpeech/test-clean")
-            self.er_processor = ERProcessor("data",('5'))
+            self.er_processor = IEMOCAPERProcessor("data")
 
     def __getitem__(self,idx):
-        if idx < len(self.asr_processor):
-            return self.asr_processor[idx]
+        if idx < len(self.er_processor):
+            return self.er_processor[idx]
         else:
             return self.er_processor[idx - len(self.asr_processor)]
 
     def __len__(self):
-        return len(self.asr_processor) + len(self.er_processor)
+        return len(self.er_processor)
     
         
 
@@ -52,19 +43,11 @@ def compute_metrics(preds, labels):
     
 
 
-def load_and_cache_examples(args,data_type,evaluate=False):
-    if data_type=='train':
-        processor = processors["audio"]('train')
-    elif data_type=='dev':
-        processor = processors["audio"]('dev')
-    else:
-        processor = processors["audio"]('test')
-
-    return processor
+def load_and_cache_examples(data_type,evaluate=False):
+    return processors['finetune'](data_type)
 
 processors = {
-    "audio": AudioProcessor,
-
+    "finetune": FTProcessor,
 }
 
 output_modes = {
