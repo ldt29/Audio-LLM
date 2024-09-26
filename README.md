@@ -1,3 +1,4 @@
+# Audio-LLM: Activating the Capabilities of Large Language Models to Comprehend Audio Data (ISNN 2024)
 ## setup
 1. Our environment: The python version is 3.9.17, and other required packages can be installed with the following command: ```pip install -r requirements.txt```.
 2. Download [whisper tiny](https://huggingface.co/openai/whisper-tiny/tree/main) to ```whisper_path```.
